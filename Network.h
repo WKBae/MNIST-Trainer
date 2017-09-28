@@ -71,7 +71,6 @@ namespace nn {
 				for(unsigned int j = 0; j < outputs; j++) {
 					last_f[j] += prev_f[i] * weights[i][j];
 				}
-				1;
 			}
 			/* dummy input */
 			for(unsigned int j = 0; j < outputs; j++) {
