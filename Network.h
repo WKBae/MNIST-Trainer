@@ -7,11 +7,13 @@
 
 #include "Common.h"
 #include "Layer.h"
+#include "Dataset.h"
 
 #include <cstring>
 #include <cstdlib>
 #include <cstdio>
 #include <fstream>
+#include <stdexcept>
 
 namespace nn {
 
@@ -95,14 +97,17 @@ namespace nn {
 			}
 		};
 
-		void train(unsigned int n, NUM_TYPE** train_data, NUM_TYPE** labels) {
+		void train(unsigned int n, DataEntry* data, NUM_TYPE learning_rate = 0.005) {
 			NUM_TYPE** results = new NUM_TYPE*[layer_count + 1];
 			NUM_TYPE* orig_delta = new NUM_TYPE[outputs];
 
-			for(unsigned int i = 0; i < n; i++) {
+			for(int i = 0; i < n; i++) {
+				if (data[i].data_count != inputs || data[i].label_count != outputs)
+					throw std::length_error("Data Entry size does not match with the network!");
+
 				/* Retrieve the result(f = output) of the layers */
-				results[0] = train_data[i];
-				for(unsigned int l = 0; l < layer_count; l++) {
+				results[0] = data[i].data;
+				for(int l = 0; l < layer_count; l++) {
 					results[l + 1] = layers[l]->forward(results[l]);
 				}
 
