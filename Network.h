@@ -6,7 +6,7 @@
  **/
 
 #include "Common.h"
-#include "Activation.h"
+#include "Layer.h"
 
 #include <cstring>
 #include <cstdlib>
@@ -14,113 +14,6 @@
 #include <fstream>
 
 namespace nn {
-
-	/** Abstract interface for a layer of a neural network */
-	class Layer {
-	public:
-		virtual ~Layer() {}
-		virtual NUM_TYPE* forward(NUM_TYPE* prev_f) = 0;
-		virtual NUM_TYPE* backward(NUM_TYPE* prev_delta) = 0;
-		virtual void initialize_weights() = 0;
-		virtual void update_weights(NUM_TYPE* prev_f, NUM_TYPE learning_rate) = 0;
-
-		virtual void load_weights(const FILE* fin) {
-			// unimplemented
-		}
-		virtual void load_weights(const std::ifstream& fin) {
-			// unimplemented
-		}
-
-		virtual void save_weights(const FILE* fout) {
-			// unimplemented
-		}
-		virtual void save_weights(const std::ofstream& fout) {
-			// unimplemented
-		}
-	};
-
-	/** Real implementation of the layer, abstracted due to the requirement of the template argument. */
-	template<typename Activation>
-	class LayerImpl : public Layer {
-	public:
-		LayerImpl(unsigned int inputs, unsigned int outputs) : inputs(inputs), outputs(outputs) {
-			weights = new NUM_TYPE*[inputs + 1];
-			for(unsigned int i = 0; i <= inputs; i++) { // one for dummy input(constant 1)
-				weights[i] = new NUM_TYPE[outputs];
-			}
-
-			last_f = new NUM_TYPE[outputs];
-			last_delta = new NUM_TYPE[outputs];
-			last_prop_delta = new NUM_TYPE[inputs];
-		}
-		~LayerImpl() {
-			delete[] last_prop_delta;
-			delete[] last_delta;
-			delete[] last_f;
-
-			for(unsigned int i = 0; i <= inputs; i++) {
-				delete[] weights[i];
-			}
-			delete[] weights;
-		}
-
-		NUM_TYPE* forward(NUM_TYPE* prev_f) {
-			memset(last_f, 0, sizeof(NUM_TYPE) * outputs);
-
-			for(unsigned int i = 0; i < inputs; i++) {
-				for(unsigned int j = 0; j < outputs; j++) {
-					last_f[j] += prev_f[i] * weights[i][j];
-				}
-			}
-			/* dummy input */
-			for(unsigned int j = 0; j < outputs; j++) {
-				last_f[j] += 1 * weights[inputs][j];
-			}
-
-			for(unsigned int i = 0; i < outputs; i++) {
-				last_f[i] = activation.calculate(last_f[i]);
-			}
-
-			return last_f;
-		}
-
-		NUM_TYPE* backward(NUM_TYPE* prev_delta) {
-			for(unsigned int i = 0; i < outputs; i++) {
-				last_delta[i] = activation.derivative(last_f[i]) * prev_delta[i];
-			}
-
-			memset(last_prop_delta, 0, sizeof(NUM_TYPE) * inputs);
-			for(unsigned int i = 0; i < inputs; i++) {
-				for(unsigned int j = 0; j < outputs; j++) {
-					last_prop_delta[i] += prev_delta[j] * weights[i][j];
-				}
-			}
-
-			return last_prop_delta;
-		}
-
-		void initialize_weights() {
-			for(unsigned int i = 0; i <= inputs; i++) {
-				for(unsigned int j = 0; j < outputs; j++) {
-					weights[i][j] = (rand() % 2 ? +1 : -1) * (rand() / (double) RAND_MAX);
-				}
-			}
-		}
-		void update_weights(NUM_TYPE* prev_f, NUM_TYPE learning_rate) {
-			for(unsigned int i = 0; i < inputs; i++) {
-				for(unsigned int j = 0; j < outputs; j++) {
-					weights[i][j] += learning_rate * last_delta[j] * prev_f[i];
-				}
-			}
-		}
-	private:
-		const unsigned int inputs, outputs;
-		NUM_TYPE** weights;
-		NUM_TYPE* last_f;
-		NUM_TYPE* last_delta;
-		NUM_TYPE* last_prop_delta;
-		Activation activation;
-	};
 
 	/**
 	 * The neural network.
@@ -215,17 +108,21 @@ namespace nn {
 
 				/* Restore to original [outputs] size delta. which is changed during backpropagation */
 				NUM_TYPE* delta = orig_delta;
+
 				/* Calculate delta for the output layer */
-				for(unsigned int j = 0; j < outputs; j++) {
-					delta[j] = (labels[i][j] - results[layer_count][j]) * results[layer_count][j] * (1 - results[layer_count][j]);
+				#pragma omp parallel for
+				for(int j = 0; j < outputs; j++) {
+					delta[j] = data[i].label[j] - results[layer_count][j];
 				}
+
 				/* Backpropagate and get a new delta for the next('backward') layer. */
 				for(int l = layer_count - 1; l >= 0; l--) {
 					delta = layers[l]->backward(delta);
 				}
 				
 				/* Update weights with learning rate 0.005 */
-				for(unsigned int l = 0; l < layer_count; l++) {
+				#pragma omp parallel for
+				for(int l = 0; l < layer_count; l++) {
 					layers[l]->update_weights(results[l], 0.005);
 				}
 			}
