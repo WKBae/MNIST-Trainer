@@ -86,6 +86,30 @@ int main() {
 		mse = sq_error / error_count;
 		std::cout << "Done, MSE:" << mse << std::endl;
 
+		if (epoch % 5 == 0) {
+			char ckptfile[100];
+			sprintf(ckptfile, "./ckpt/%d.ckpt", epoch);
+
+			std::cout << "[Checkpoint reached] Saving to \"" << ckptfile << "\"..." << std::endl;
+
+			std::ofstream ckpt(ckptfile, std::ios::binary);
+			network->dump_network(ckpt);
+			ckpt.flush();
+			ckpt.close();
+
+			std::cout << "Save complete." << std::endl;
+		}
+		std::cout << std::endl;
+
+		if (mse < 0.001) {
+			std::cout << "MSE reached the threshold, run more epoches?(Y/n) ";
+			char ans;
+			std::cin >> ans;
+			if (ans == 'N' || ans == 'n')
+				break;
+
+			std::cout << std::endl;
+		}
 	}
 
 	int count = 0;
