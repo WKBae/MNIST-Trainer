@@ -37,7 +37,11 @@ namespace nn {
 	/** Abstract interface for a layer of a neural network */
 	class Layer {
 	public:
+		Layer(unsigned int inputs, unsigned int outputs) : inputs(inputs), outputs(outputs) {}
 		virtual ~Layer() {}
+
+		const unsigned int inputs, outputs;
+
 		virtual NUM_TYPE* forward(NUM_TYPE* prev_f) = 0;
 		virtual NUM_TYPE* backward(NUM_TYPE* prev_delta) = 0;
 		virtual void initialize_weights() = 0;
@@ -51,11 +55,8 @@ namespace nn {
 	template<typename Activation>
 	class LayerImpl : public Layer {
 	public:
-		LayerImpl(unsigned int inputs, unsigned int outputs) : inputs(inputs), outputs(outputs) {
-			weights = new NUM_TYPE*[inputs + 1];
-			for(unsigned int i = 0; i <= inputs; i++) { // one for dummy input(constant 1)
-				weights[i] = new NUM_TYPE[outputs];
-			}
+		LayerImpl(unsigned int inputs, unsigned int outputs) : Layer(inputs, outputs) {
+			weights = new NUM_TYPE[(inputs + 1) * outputs];
 
 			last_f = new NUM_TYPE[outputs];
 			last_delta = new NUM_TYPE[outputs];
@@ -66,68 +67,20 @@ namespace nn {
 			delete[] last_delta;
 			delete[] last_f;
 
-			for(unsigned int i = 0; i <= inputs; i++) {
-				delete[] weights[i];
-			}
 			delete[] weights;
 		}
 
 		NUM_TYPE* forward(NUM_TYPE* prev_f) {
-			/*
-			#pragma omp single
-			memset(last_f, 0, sizeof(NUM_TYPE) * outputs);
-			*/
-			/*#pragma omp parallel for
+			#pragma omp parallel for
 			for (int j = 0; j < outputs; j++) {
 				NUM_TYPE sum = 0;
 				#pragma omp parallel for reduction(+:sum)
 				for (int i = 0; i < inputs; i++) {
-					sum += prev_f[i] * weights[i][j];
+					sum += prev_f[i] * weight(i, j);
 				}
-				last_f[j] = sum;
-			}*/
-
-			/*NUM_TYPE* sums = new NUM_TYPE[inputs * outputs];
-			#pragma omp parallel for
-			for (int i = 0; i < inputs; i++) {
-				NUM_TYPE f = prev_f[i];
-				NUM_TYPE* sumi = sums + (i * outputs);
-				for (int j = 0; j < outputs; j++) {
-					sumi[j] = f * weights[i][j];
-				}
-			}*/
-
-			NUM_TYPE* w_transposed = new NUM_TYPE[outputs * inputs];
-			for (int i = 0; i < inputs; i++) {
-				for (int j = 0; j < outputs; j++) {
-					w_transposed[j * inputs + i] = weights[i][j];
-				}
+				last_f[j] = activation.calculate(sum + weight(inputs, j));
 			}
 
-			#pragma omp parallel for
-			for (int j = 0; j < outputs; j++) {
-				NUM_TYPE sum = 0;
-				NUM_TYPE* w_t = w_transposed + (j * inputs);
-				#pragma omp parallel for reduction(+:sum)
-				for (int i = 0; i < inputs; i++) {
-					sum += prev_f[i] * w_t[i];
-				}
-				last_f[j] = activation.calculate(sum + weights[inputs][j]);
-			}
-
-			delete[] w_transposed;
-
-			//delete[] sums;
-			/* dummy input */
-			//#pragma omp for
-			//for(int j = 0; j < outputs; j++) {
-			//	last_f[j] += /* (1 *) */ weights[inputs][j];
-			//}
-
-			/*#pragma omp parallel for
-			for (int i = 0; i < outputs; i++) {
-				last_f[i] = activation.calculate(last_f[i] + weights[inputs][i]);
-			}*/
 			return last_f;
 		}
 
@@ -137,17 +90,12 @@ namespace nn {
 				last_delta[i] = activation.derivative(last_f[i]) * prev_delta[i];
 			}
 
-			/*
-			#pragma omp single
-			memset(last_prop_delta, 0, sizeof(NUM_TYPE) * inputs);
-			*/
-
 			#pragma omp parallel for
 			for(int i = 0; i < inputs; i++) {
 				NUM_TYPE sum = 0;
 				#pragma omp parallel for reduction(+:sum)
 				for(int j = 0; j < outputs; j++) {
-					sum += last_delta[j] * weights[i][j];
+					sum += last_delta[j] * weight(i, j);
 				}
 				last_prop_delta[i] = sum;
 			}
@@ -158,35 +106,18 @@ namespace nn {
 		void initialize_weights() {
 			for(int i = 0; i <= inputs; i++) {
 				for(int j = 0; j < outputs; j++) {
-					weights[i][j] = (rand() / (RAND_MAX / 2.0)) - 1.0;
+					weight(i, j) = (rand() / (RAND_MAX / 2.0)) - 1.0;
 				}
 			}
 		}
 		void update_weights(NUM_TYPE* prev_f, NUM_TYPE learning_rate) {
-			/*#pragma omp parallel for
-			for(int i = 0; i < inputs; i++) {
-				#pragma omp parallel for
-				for(int j = 0; j < outputs; j++) {
-					weights[i][j] += learning_rate * last_delta[j] * prev_f[i];
-				}
-			}*/
-			/*#pragma omp parallel for
-			for(int n = 0; n < inputs * outputs; n++) {
-				int i = n / outputs;
-				int j = n % outputs;
-				weights[i][j] += learning_rate * (last_delta[j] * prev_f[i]);
-			}
 			#pragma omp parallel for
-			for(int j = 0; j < outputs; j++) {
-				weights[inputs][j] += learning_rate * last_delta[j]; /* (* 1) *
-			}*/
-
-			#pragma omp parallel for
-			for (int i = 0; i <= inputs; i++) {
-				NUM_TYPE f = (i < inputs) ? prev_f[i] : 1;
-				for (int j = 0; j < outputs; j++) {
-					weights[i][j] += learning_rate * (last_delta[j] * f);
+			for (int j = 0; j < outputs; j++) {
+				NUM_TYPE delta = last_delta[j];
+				for (int i = 0; i < inputs; i++) {
+					weight(i, j) += learning_rate * (delta * prev_f[i]);
 				}
+				weight(inputs, j) += learning_rate * delta;
 			}
 		}
 
@@ -202,11 +133,12 @@ namespace nn {
 			return buf;
 		}
 
-	public:
-		const unsigned int inputs, outputs;
-
 	private:
-		NUM_TYPE** weights;
+		NUM_TYPE& weight(int from, int to) {
+			return weights[to * inputs + from];
+		}
+
+		NUM_TYPE* weights;
 		NUM_TYPE* last_f;
 		NUM_TYPE* last_delta;
 		NUM_TYPE* last_prop_delta;
