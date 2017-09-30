@@ -3,19 +3,19 @@
 #include "Dataset.h"
 
 namespace nn {
-	class MNIST : public Dataset {
+	class THREE : public Dataset {
 	public:
-		static const int INPUTS = 784, OUTPUTS = 10;
+		static const int INPUTS = 64, OUTPUTS = 3;
 
-		MNIST(const char* train_file, const char* test_file)
+		THREE(const char* train_file, const char* test_file)
 			: train(train_file), test(test_file)
 		{}
 
 		std::vector<DataEntry> get_train_set() {
 			int label;
-			FILE* mnist_train = fopen(train, "r");
+			FILE* three_train = fopen(train, "r");
 			std::vector<DataEntry> dataset;
-			while (fscanf(mnist_train, "%d", &label) > 0) {
+			while (fscanf(three_train, "%d $", &label) > 0) {
 				DataEntry entry(INPUTS, OUTPUTS);
 
 				for (int i = 0; i < OUTPUTS; i++) {
@@ -23,9 +23,9 @@ namespace nn {
 				}
 
 				for (int i = 0; i < INPUTS; i++) {
-					fscanf(mnist_train, "%lf", &entry.data[i]);
-					entry.data[i] /= 255.0;
+					fscanf(three_train, "%lf", &entry.data[i]);
 				}
+				fscanf(three_train, "%*d");
 
 				dataset.push_back(std::move(entry));
 			}
@@ -34,9 +34,9 @@ namespace nn {
 
 		std::vector<DataEntry> get_test_set() {
 			int label;
-			FILE* mnist_test = fopen(test, "r");
+			FILE* three_test = fopen(test, "r");
 			std::vector<DataEntry> dataset;
-			while (fscanf(mnist_test, "%d", &label) > 0) {
+			while (fscanf(three_test, "%d $", &label) > 0) {
 				DataEntry entry(INPUTS, OUTPUTS);
 
 				for (int i = 0; i < OUTPUTS; i++) {
@@ -44,9 +44,9 @@ namespace nn {
 				}
 
 				for (int i = 0; i < INPUTS; i++) {
-					fscanf(mnist_test, "%lf", &entry.data[i]);
-					entry.data[i] /= 255.0;
+					fscanf(three_test, "%lf", &entry.data[i]);
 				}
+				fscanf(three_test, "%*d");
 
 				dataset.push_back(std::move(entry));
 			}
