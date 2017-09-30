@@ -39,6 +39,10 @@ namespace nn {
 				} else {
 					last_size = input_size;
 				}
+				if(last_size == 0 || neurons == 0) {
+					throw std::invalid_argument("Neuron count cannot be zero, maybe you missed the call to Builder::input()");
+				}
+
 				Layer* layer = new LayerImpl<Sigmoid>(last_size, neurons);
 				layer->initialize_weights();
 
