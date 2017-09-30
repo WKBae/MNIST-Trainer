@@ -80,6 +80,8 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="Dataset.h" />
+    <ClInclude Include="DS_MNIST_bin.h" />
+    <ClInclude Include="DS_THREE.h" />
     <ClInclude Include="Layer.h" />
     <ClInclude Include="DS_MNIST.h" />
     <ClInclude Include="Network.h" />

@@ -30,6 +30,12 @@
     <ClInclude Include="DS_MNIST.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="DS_THREE.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="DS_MNIST_bin.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
