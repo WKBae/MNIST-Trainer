@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <fstream>
 #include <stdexcept>
+#include <iostream>
 
 namespace nn {
 
@@ -23,7 +24,7 @@ namespace nn {
 	 */
 	class Network {
 	public:
-		static class Builder {
+		class Builder {
 		public:
 			Builder& input(unsigned int input_size) {
 				delete_list();
@@ -66,6 +67,73 @@ namespace nn {
 				Network* net = new Network(count, layers, input_size, tail->output_size);
 				//delete this;
 				return net;
+			}
+
+			Builder& load(std::istream& const input) {
+				char magic[6];
+				input.read(magic, 5);
+				magic[5] = '\0';
+				if (input.fail() || strcmp(magic, "NeNet") != 0)
+					throw std::invalid_argument("The input is not a network save file");
+
+				unsigned int layers;
+				input.read((char*) &layers, sizeof(layers));
+
+				NUM_TYPE* weight_buf = NULL;
+				int buf_size = -1;
+
+				for (int i = 0; i < layers; i++) {
+					bool fail = false;
+
+					int in, out;
+					input.read((char*) &in, sizeof(in));
+					fail = fail || input.fail();
+					input.read((char*) &out, sizeof(out));
+					fail = fail || input.fail();
+
+					int count;
+					input.read((char*) &count, sizeof(count));
+					fail = fail || input.fail();
+
+					if (fail) {
+						throw std::out_of_range("File too short");
+					}
+					if (count > buf_size) {
+						NUM_TYPE* newbuf = new NUM_TYPE[count];
+						delete[] weight_buf;
+						weight_buf = newbuf;
+						buf_size = count;
+					}
+
+					input.read((char*) weight_buf, sizeof(NUM_TYPE) * count);
+					if (input.fail()) {
+						throw std::length_error("File size less than expected");
+					}
+
+					Layer* layer = new LayerImpl<Sigmoid>(in, out);
+					layer->load_weights(weight_buf, count);
+
+					LayerList* list = new LayerList;
+					list->layer = layer;
+					list->output_size = out;
+					list->next = NULL;
+
+					if (tail) {
+						if (tail->output_size != in) {
+							throw std::length_error("Layer output-input size mismatch");
+						}
+						tail->next = list;
+						tail = list;
+					} else {
+						input_size = in;
+						head = tail = list;
+					}
+					count++;
+				}
+
+				delete[] weight_buf;
+
+				return *this;
 			}
 
 			Builder() : head(NULL), tail(NULL), input_size(0), count(0) {}
@@ -148,6 +216,22 @@ namespace nn {
 				delete layers[i];
 			}
 			delete[] layers;
+		}
+
+		void dump_network(std::ostream& const output) {
+			output.write("NeNet", 5);
+			output.write((char*) &layer_count, sizeof(layer_count));
+			for (int i = 0; i < layer_count; i++) {
+				int inputs = layers[i]->inputs;
+				int outputs = layers[i]->outputs;
+				output.write((char*) &inputs, sizeof(inputs));
+				output.write((char*) &outputs, sizeof(outputs));
+
+				std::vector<NUM_TYPE> weights = layers[i]->dump_weights();
+				int size = weights.size();
+				output.write((char*) &size, sizeof(size));
+				output.write((char*) &weights[0], sizeof(NUM_TYPE) * size);
+			}
 		}
 	private:
 		Layer** layers;

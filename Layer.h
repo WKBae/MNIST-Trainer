@@ -48,7 +48,7 @@ namespace nn {
 		virtual void update_weights(NUM_TYPE* prev_f, NUM_TYPE learning_rate) = 0;
 
 		virtual std::vector<NUM_TYPE> dump_weights() { return std::vector<NUM_TYPE>(); }
-		virtual int load_weights(char* begin) { return 0; }
+		virtual int load_weights(NUM_TYPE* begin, int limit = -1) { return 0; }
 	};
 
 	/** Real implementation of the layer, abstracted due to the requirement of the template argument. */
@@ -124,13 +124,24 @@ namespace nn {
 		std::vector<NUM_TYPE> dump_weights() {
 			std::vector<NUM_TYPE> buf;
 			buf.reserve((inputs + 1) * outputs);
-			int idx = 0;
 			for (int i = 0; i <= inputs; i++) {
 				for (int j = 0; j < outputs; j++) {
-					buf[idx++] = weights[i][j];
+					buf.push_back(weight(i, j));
 				}
 			}
 			return buf;
+		}
+		int load_weights(NUM_TYPE* begin, int limit = -1) {
+			int idx = 0;
+			for (int i = 0; i <= inputs; i++) {
+				for (int j = 0; j < outputs; j++) {
+					if (limit >= 0 && idx >= limit) goto fail_too_short;
+					weight(i, j) = begin[idx++];
+				}
+			}
+			return idx;
+		fail_too_short:
+			return -1;
 		}
 
 	private:
