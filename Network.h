@@ -6,6 +6,7 @@
  **/
 
 #include "Common.h"
+#include "Activation.h"
 #include "Layer.h"
 #include "Dataset.h"
 
@@ -197,10 +198,10 @@ namespace nn {
 					delta = layers[l]->backward(delta);
 				}
 				
-				/* Update weights with learning rate 0.005 */
 				#pragma omp parallel for
+				/* Update weights with their optimizer */
 				for(int l = 0; l < layer_count; l++) {
-					layers[l]->update_weights(results[l], 0.005);
+					layers[l]->update_weights(results[l]);
 				}
 			}
 
