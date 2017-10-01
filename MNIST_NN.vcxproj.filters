@@ -13,6 +13,12 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="헤더 파일\dataset">
+      <UniqueIdentifier>{92998e2b-52c4-45f0-80ee-d3c9af8a134f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="헤더 파일\layer">
+      <UniqueIdentifier>{296c6934-237c-4457-981d-4b6546d038fa}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Network.h">
@@ -21,20 +27,23 @@
     <ClInclude Include="Common.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
-    <ClInclude Include="Layer.h">
-      <Filter>헤더 파일</Filter>
-    </ClInclude>
     <ClInclude Include="Dataset.h">
-      <Filter>헤더 파일</Filter>
+      <Filter>헤더 파일\dataset</Filter>
     </ClInclude>
-    <ClInclude Include="DS_MNIST.h">
-      <Filter>헤더 파일</Filter>
+    <ClInclude Include="MNIST.h">
+      <Filter>헤더 파일\dataset</Filter>
     </ClInclude>
-    <ClInclude Include="DS_THREE.h">
-      <Filter>헤더 파일</Filter>
+    <ClInclude Include="MNIST_bin.h">
+      <Filter>헤더 파일\dataset</Filter>
     </ClInclude>
-    <ClInclude Include="DS_MNIST_bin.h">
-      <Filter>헤더 파일</Filter>
+    <ClInclude Include="THREE.h">
+      <Filter>헤더 파일\dataset</Filter>
+    </ClInclude>
+    <ClInclude Include="Layer.h">
+      <Filter>헤더 파일\layer</Filter>
+    </ClInclude>
+    <ClInclude Include="Activation.h">
+      <Filter>헤더 파일\layer</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

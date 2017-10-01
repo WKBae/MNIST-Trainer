@@ -1,7 +1,7 @@
 #include "Network.h"
-//#include "DS_THREE.h"
-//#include "DS_MNIST.h"
-#include "DS_MNIST_bin.h"
+//#include "THREE.h"
+//#include "MNIST.h"
+#include "MNIST_bin.h"
 #include <vector>
 #include <iostream>
 #include <cstdlib>

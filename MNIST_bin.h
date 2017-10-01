@@ -1,6 +1,8 @@
 #pragma once
+#define _CRT_SECURE_NO_WARNINGS
 
 #include "Dataset.h"
+#include <cstdio>
 
 namespace nn {
 	class MNIST_bin : public Dataset {
@@ -11,7 +13,7 @@ namespace nn {
 			: train(train_file), test(test_file)
 		{}
 
-		std::vector<DataEntry> get_train_set() {
+		std::vector<DataEntry> get_train_set() override {
 			FILE* mnist_train = fopen(train, "rb");
 			std::vector<DataEntry> dataset;
 
@@ -32,7 +34,7 @@ namespace nn {
 			return dataset;
 		}
 
-		std::vector<DataEntry> get_test_set() {
+		std::vector<DataEntry> get_test_set() override {
 			FILE* mnist_test = fopen(test, "rb");
 			std::vector<DataEntry> dataset;
 
@@ -55,7 +57,7 @@ namespace nn {
 	private:
 		struct mnist_entry {
 			int label;
-			char data[INPUTS];
+			unsigned char data[INPUTS];
 		};
 		const char *train, *test;
 	};

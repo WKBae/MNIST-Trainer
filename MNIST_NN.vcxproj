@@ -87,11 +87,12 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="Activation.h" />
     <ClInclude Include="Dataset.h" />
-    <ClInclude Include="DS_MNIST_bin.h" />
-    <ClInclude Include="DS_THREE.h" />
+    <ClInclude Include="MNIST_bin.h" />
+    <ClInclude Include="THREE.h" />
     <ClInclude Include="Layer.h" />
-    <ClInclude Include="DS_MNIST.h" />
+    <ClInclude Include="MNIST.h" />
     <ClInclude Include="Network.h" />
     <ClInclude Include="Common.h" />
   </ItemGroup>
