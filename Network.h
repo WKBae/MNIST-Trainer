@@ -175,7 +175,7 @@ namespace nn {
 				NUM_TYPE* delta = delta_buf;
 
 				/* Calculate delta for the output layer */
-				#pragma omp parallel for
+				#pragma loop(hint_parallel(0))
 				for(int j = 0; j < outputs; j++) {
 					delta[j] = data[i].label[j] - results[layer_count][j];
 				}
@@ -185,8 +185,8 @@ namespace nn {
 					delta = layers[l]->backward(delta);
 				}
 				
-				#pragma omp parallel for
 				/* Update weights with their optimizer */
+				#pragma loop(hint_parallel(0))
 				for(int l = 0; l < layer_count; l++) {
 					layers[l]->update_weights(results[l]);
 				}
