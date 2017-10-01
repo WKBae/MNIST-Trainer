@@ -1,38 +1,13 @@
 #pragma once
 
 #include "Common.h"
-#include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <cassert>
 #include <vector>
 
-namespace nn {
-	class ActivationFunction {
-	public:
-		virtual ~ActivationFunction() {}
-		virtual NUM_TYPE calculate(NUM_TYPE x) = 0;
-		virtual NUM_TYPE derivative(NUM_TYPE x) = 0;
-	};
-	class Sigmoid : public ActivationFunction {
-	public:
-		NUM_TYPE calculate(NUM_TYPE x) {
-			return 1.0 / (1.0 + exp(-x));
-		}
-		NUM_TYPE derivative(NUM_TYPE x) {
-			double f = calculate(x);
-			return f * (1 - f);
-		}
-	};
-	class ReLU : public ActivationFunction {
-	public:
-		NUM_TYPE calculate(NUM_TYPE x) {
-			return (x >= 0)? x : 0;
-		}
-		NUM_TYPE derivative(NUM_TYPE x) {
-			return (x >= 0)? 1 : 0;
-		}
-	};
 
+namespace nn {
 
 	/** Abstract interface for a layer of a neural network */
 	class Layer {
@@ -40,7 +15,7 @@ namespace nn {
 		Layer(unsigned int inputs, unsigned int outputs) : inputs(inputs), outputs(outputs) {}
 		virtual ~Layer() {}
 
-		const unsigned int inputs, outputs;
+		const int inputs, outputs;
 
 		virtual NUM_TYPE* forward(NUM_TYPE* prev_f) = 0;
 		virtual NUM_TYPE* backward(NUM_TYPE* prev_delta) = 0;
@@ -70,11 +45,10 @@ namespace nn {
 			delete[] weights;
 		}
 
-		NUM_TYPE* forward(NUM_TYPE* prev_f) {
+		NUM_TYPE* forward(NUM_TYPE* prev_f) override {
 			#pragma omp parallel for
 			for (int j = 0; j < outputs; j++) {
 				NUM_TYPE sum = 0;
-				#pragma omp parallel for reduction(+:sum)
 				for (int i = 0; i < inputs; i++) {
 					sum += prev_f[i] * weight(i, j);
 				}
@@ -84,7 +58,7 @@ namespace nn {
 			return last_f;
 		}
 
-		NUM_TYPE* backward(NUM_TYPE* prev_delta) {
+		NUM_TYPE* backward(NUM_TYPE* prev_delta) override {
 			#pragma omp parallel for
 			for(int i = 0; i < outputs; i++) {
 				last_delta[i] = activation.derivative(last_f[i]) * prev_delta[i];
@@ -93,7 +67,6 @@ namespace nn {
 			#pragma omp parallel for
 			for(int i = 0; i < inputs; i++) {
 				NUM_TYPE sum = 0;
-				#pragma omp parallel for reduction(+:sum)
 				for(int j = 0; j < outputs; j++) {
 					sum += last_delta[j] * weight(i, j);
 				}
@@ -103,10 +76,10 @@ namespace nn {
 			return last_prop_delta;
 		}
 
-		void initialize_weights() {
+		void initialize_weights() override {
 			for(int i = 0; i <= inputs; i++) {
 				for(int j = 0; j < outputs; j++) {
-					weight(i, j) = (rand() / (RAND_MAX / 2.0)) - 1.0;
+					weight(i, j) = ((double) rand() / RAND_MAX) - 0.5;
 				}
 			}
 		}
@@ -131,7 +104,7 @@ namespace nn {
 			}
 			return buf;
 		}
-		int load_weights(NUM_TYPE* begin, int limit = -1) {
+		int load_weights(NUM_TYPE* begin, int limit = -1) override {
 			int idx = 0;
 			for (int i = 0; i <= inputs; i++) {
 				for (int j = 0; j < outputs; j++) {
@@ -145,7 +118,8 @@ namespace nn {
 		}
 
 	private:
-		NUM_TYPE& weight(int from, int to) {
+		NUM_TYPE& weight(unsigned int from, unsigned int to) {
+			assert(from <= inputs && to < outputs);
 			return weights[to * inputs + from];
 		}
 
