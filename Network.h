@@ -11,10 +11,7 @@
 #include "Dataset.h"
 
 #include <cstring>
-#include <cstdlib>
-#include <cstdio>
-#include <fstream>
-#include <stdexcept>
+#include <cassert>
 #include <iostream>
 
 namespace nn {
@@ -74,14 +71,14 @@ namespace nn {
 				return net;
 			}
 
-			Builder& load(std::istream& const input) {
+			Builder& load(std::istream& input) {
 				char magic[6];
 				input.read(magic, 5);
 				magic[5] = '\0';
 				if (input.fail() || strcmp(magic, "NeNet") != 0)
 					throw std::invalid_argument("The input is not a network save file");
 
-				unsigned int layers;
+				int layers;
 				input.read((char*) &layers, sizeof(layers));
 
 				NUM_TYPE* weight_buf = NULL;
@@ -92,31 +89,26 @@ namespace nn {
 
 					int in, out;
 					input.read((char*) &in, sizeof(in));
-					fail = fail || input.fail();
+					assert(!input.fail());
 					input.read((char*) &out, sizeof(out));
-					fail = fail || input.fail();
+					assert(!input.fail());
 
-					int count;
-					input.read((char*) &count, sizeof(count));
-					fail = fail || input.fail();
+					int weight_count;
+					input.read((char*) &weight_count, sizeof(weight_count));
+					assert(!input.fail());
 
-					if (fail) {
-						throw std::out_of_range("File too short");
-					}
-					if (count > buf_size) {
-						NUM_TYPE* newbuf = new NUM_TYPE[count];
+					if (weight_count > buf_size) {
+						NUM_TYPE* newbuf = new NUM_TYPE[weight_count];
 						delete[] weight_buf;
 						weight_buf = newbuf;
-						buf_size = count;
+						buf_size = weight_count;
 					}
 
-					input.read((char*) weight_buf, sizeof(NUM_TYPE) * count);
-					if (input.fail()) {
-						throw std::length_error("File size less than expected");
-					}
+					input.read((char*) weight_buf, sizeof(NUM_TYPE) * weight_count);
+					assert(!input.fail());
 
 					Layer* layer = new LayerImpl<Sigmoid>(in, out);
-					layer->load_weights(weight_buf, count);
+					layer->load_weights(weight_buf, weight_count);
 
 					LayerList* list = new LayerList;
 					list->layer = layer;
@@ -124,9 +116,8 @@ namespace nn {
 					list->next = NULL;
 
 					if (tail) {
-						if (tail->output_size != in) {
-							throw std::length_error("Layer output-input size mismatch");
-						}
+						assert(tail->output_size == in);
+
 						tail->next = list;
 						tail = list;
 					} else {
@@ -170,13 +161,9 @@ namespace nn {
 			}
 		};
 
-		void train(unsigned int n, DataEntry* data, NUM_TYPE learning_rate = 0.005) {
-			NUM_TYPE** results = new NUM_TYPE*[layer_count + 1];
-			NUM_TYPE* orig_delta = new NUM_TYPE[outputs];
-
-			for(int i = 0; i < n; i++) {
-				if (data[i].data_count != inputs || data[i].label_count != outputs)
-					throw std::length_error("Data Entry size does not match with the network!");
+		void train(unsigned int n, DataEntry* data) {
+			for(unsigned int i = 0; i < n; i++) {
+				assert(data[i].data_count == inputs && data[i].label_count == outputs);
 
 				/* Retrieve the result(f = output) of the layers */
 				results[0] = data[i].data;
@@ -185,7 +172,7 @@ namespace nn {
 				}
 
 				/* Restore to original [outputs] size delta. which is changed during backpropagation */
-				NUM_TYPE* delta = orig_delta;
+				NUM_TYPE* delta = delta_buf;
 
 				/* Calculate delta for the output layer */
 				#pragma omp parallel for
@@ -204,26 +191,26 @@ namespace nn {
 					layers[l]->update_weights(results[l]);
 				}
 			}
-
-			delete[] results;
-			delete[] orig_delta;
 		}
 
 		NUM_TYPE* predict(NUM_TYPE* data) {
-			for(unsigned int i = 0; i < layer_count; i++) {
+			for(int i = 0; i < layer_count; i++) {
 				data = layers[i]->forward(data);
 			}
 			return data;
 		}
 
 		~Network() {
-			for(unsigned int i = 0; i < layer_count; i++) {
+			delete[] delta_buf;
+			delete[] results;
+
+			for(int i = 0; i < layer_count; i++) {
 				delete layers[i];
 			}
 			delete[] layers;
 		}
 
-		void dump_network(std::ostream& const output) {
+		void dump_network(std::ostream& output) {
 			output.write("NeNet", 5);
 			output.write((char*) &layer_count, sizeof(layer_count));
 			for (int i = 0; i < layer_count; i++) {
@@ -240,11 +227,13 @@ namespace nn {
 		}
 	private:
 		Layer** layers;
-		const unsigned int layer_count;
-		const unsigned int inputs, outputs;
+		const int layer_count;
+		const int inputs, outputs;
+		NUM_TYPE** results;
+		NUM_TYPE* delta_buf;
 
 		Network(unsigned int layer_count, Layer** layers, unsigned int inputs, unsigned int outputs)
-			: layers(layers), layer_count(layer_count), inputs(inputs), outputs(outputs) {}
+			: layers(layers), layer_count(layer_count), inputs(inputs), outputs(outputs), results(new NUM_TYPE*[layer_count + 1]), delta_buf(new NUM_TYPE[outputs]) {}
 	};
 	
 }
