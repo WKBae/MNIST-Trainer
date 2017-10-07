@@ -30,6 +30,7 @@ namespace nn {
 
 				return *this;
 			}
+			template<typename A = Sigmoid>
 			Builder& addLayer(unsigned int neurons) {
 				unsigned int last_size;
 				if(tail) {
@@ -41,7 +42,7 @@ namespace nn {
 					throw std::invalid_argument("Neuron count cannot be zero, maybe you missed the call to Builder::input()");
 				}
 
-				Layer* layer = new LayerImpl<Sigmoid>(last_size, neurons);
+				Layer* layer = new LayerImpl<A>(last_size, neurons);
 				layer->initialize_weights();
 
 				LayerList* list = new LayerList;
@@ -87,6 +88,10 @@ namespace nn {
 				for (int i = 0; i < layers; i++) {
 					bool fail = false;
 
+					char type;
+					input.read(&type, sizeof(type));
+					assert(!input.fail());
+
 					int in, out;
 					input.read((char*) &in, sizeof(in));
 					assert(!input.fail());
@@ -107,7 +112,29 @@ namespace nn {
 					input.read((char*) weight_buf, sizeof(NUM_TYPE) * weight_count);
 					assert(!input.fail());
 
-					Layer* layer = new LayerImpl<Sigmoid>(in, out);
+					Layer* layer;
+					switch(type) {
+					case ActivationFunction::types::Sigmoid:
+						layer = new LayerImpl<Sigmoid>(in, out);
+						break;
+					case ActivationFunction::types::Tanh:
+						layer = new LayerImpl<Tanh>(in, out);
+						break;
+					case ActivationFunction::types::HardSigmoid:
+						layer = new LayerImpl<HardSigmoid>(in, out);
+						break;
+					case ActivationFunction::types::ReLU:
+						layer = new LayerImpl<ReLU>(in, out);
+						break;
+					case ActivationFunction::types::LeakyReLU:
+						layer = new LayerImpl<LeakyReLU>(in, out);
+						break;
+					case ActivationFunction::types::ELU:
+						layer = new LayerImpl<ELU>(in, out);
+						break;
+					default:
+						throw std::runtime_error("Invalid activation function type!");
+					}
 					layer->load_weights(weight_buf, weight_count);
 
 					LayerList* list = new LayerList;
@@ -214,8 +241,10 @@ namespace nn {
 			output.write("NeNet", 5);
 			output.write((char*) &layer_count, sizeof(layer_count));
 			for (int i = 0; i < layer_count; i++) {
+				char type = layers[i]->getActivationType();
 				int inputs = layers[i]->inputs;
 				int outputs = layers[i]->outputs;
+				output.write(&type, sizeof(type));
 				output.write((char*) &inputs, sizeof(inputs));
 				output.write((char*) &outputs, sizeof(outputs));
 

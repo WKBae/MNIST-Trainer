@@ -24,6 +24,7 @@ namespace nn {
 		virtual void initialize_weights() = 0;
 		virtual void update_weights(NUM_TYPE* prev_f) = 0;
 
+		virtual char getActivationType() = 0;
 		virtual std::vector<NUM_TYPE> dump_weights() { return std::vector<NUM_TYPE>(); }
 		virtual int load_weights(NUM_TYPE* begin, int limit = -1) { return 0; }
 	};
@@ -107,6 +108,10 @@ namespace nn {
 				}
 				weight(inputs, j) += weight_diff(inputs, j, delta);
 			}
+		}
+
+		char getActivationType() override {
+			return (char) activation.getId();
 		}
 
 		std::vector<NUM_TYPE> dump_weights() override {
