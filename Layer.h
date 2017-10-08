@@ -11,7 +11,7 @@
 //#define OPTIMIZE_ADAGRAD
 //#define OPTIMIZE_NESTEROV
 //#define OPTIMIZE_MOMENTUM
-// default SG
+// default SGD
 
 #define XAVIER_INITIALIZATION
 //#define ZERO_BIAS_INITIALIZATION
@@ -50,7 +50,6 @@ namespace nn {
 #if defined(OPTIMIZE_ADAM)
 			last_m = new NUM_TYPE[(inputs + 1) * outputs]();
 			last_v = new NUM_TYPE[(inputs + 1) * outputs]();
-			t = 0;
 			lr_t = 0;
 			beta1_sq = beta2_sq = 1;
 #elif defined(OPTIMIZE_ADAGRAD) || defined(OPTIMIZE_RMSPROP)
@@ -139,7 +138,6 @@ namespace nn {
 		}
 		void update_weights(NUM_TYPE* prev_f) override {
 #if defined(OPTIMIZE_ADAM)
-			t++;
 			beta1_sq *= beta1;
 			beta2_sq *= beta2;
 			lr_t = learning_rate * sqrt(1.0 - beta2_sq) / (1.0 - beta1_sq);
@@ -192,74 +190,88 @@ namespace nn {
 
 		/* Optimizer implementation */
 #if defined(OPTIMIZE_ADAM)
-		NUM_TYPE& m(unsigned int from, unsigned int to) {
+		NUM_TYPE& m(unsigned int from, unsigned int to) const {
 			assert(from <= inputs && to < outputs);
 			return last_m[to * inputs + from];
 		}
 		NUM_TYPE* last_m;
 
-		NUM_TYPE& v(unsigned int from, unsigned int to) {
+		NUM_TYPE& v(unsigned int from, unsigned int to) const {
 			assert(from <= inputs && to < outputs);
 			return last_v[to * inputs + from];
 		}
 		NUM_TYPE* last_v;
 
-		int t;
 		NUM_TYPE lr_t;
-		const NUM_TYPE learning_rate = 0.0005, beta1 = 0.93, beta2 = 0.9999;
+		NUM_TYPE learning_rate = 0.0002;
 		NUM_TYPE beta1_sq, beta2_sq;
+		const NUM_TYPE beta1 = 0.99, beta2 = 0.999995;
+		const NUM_TYPE epsilon = 1e-8;
 
-		NUM_TYPE weight_diff(int i, int j, NUM_TYPE loss, NUM_TYPE epsilon = 1e-8) {
-			m(i, j) = beta1 * m(i, j) + (1.0 - beta1) * loss;
-			v(i, j) = beta2 * v(i, j) + (1.0 - beta2) * (loss * loss);
-			return lr_t * m(i, j) / (sqrt(v(i, j)) + epsilon);
+		NUM_TYPE weight_diff(int i, int j, NUM_TYPE loss) {
+			// small performance boost by storing the values temporary
+			NUM_TYPE m_ = m(i, j) = beta1 * m(i, j) + (1.0 - beta1) * loss;
+			NUM_TYPE v_ = v(i, j) = beta2 * v(i, j) + (1.0 - beta2) * (loss * loss);
+			return lr_t * m_ / (sqrt(v_) + epsilon);
 		}
 #elif defined(OPTIMIZE_RMSPROP)
-		NUM_TYPE& g(unsigned int from, unsigned int to) {
+		NUM_TYPE& g(unsigned int from, unsigned int to) const {
 			assert(from <= inputs && to < outputs);
 			return last_g[to * inputs + from];
 		}
 		NUM_TYPE* last_g;
 
-		NUM_TYPE weight_diff(int i, int j, NUM_TYPE loss, NUM_TYPE learning_rate = 0.0002, NUM_TYPE rho = 0.999, NUM_TYPE epsilon = 1e-8) {
-			g(i, j) = rho * g(i, j) + (1.0 - rho) * (loss * loss);
-			return learning_rate * loss / (sqrt(g(i, j)) + epsilon);
+		NUM_TYPE learning_rate = 0.0003;
+		const NUM_TYPE rho = 0.99985, epsilon = 1e-8;
+
+		NUM_TYPE weight_diff(int i, int j, NUM_TYPE loss, ) {
+			NUM_TYPE g_ = g(i, j) = rho * g(i, j) + (1.0 - rho) * (loss * loss);
+			return learning_rate * loss / (sqrt(g_) + epsilon);
 		}
 #elif defined(OPTIMIZE_ADAGRAD)
-		NUM_TYPE& g(unsigned int from, unsigned int to) {
+		NUM_TYPE& g(unsigned int from, unsigned int to) const {
 			assert(from <= inputs && to < outputs);
 			return last_g[to * inputs + from];
 		}
 		NUM_TYPE* last_g;
-
-		NUM_TYPE weight_diff(int i, int j, NUM_TYPE loss, NUM_TYPE learning_rate = 0.0005, NUM_TYPE epsilon = 1e-10) {
-			g(i, j) += loss * loss;
-			return learning_rate * loss / (sqrt(g(i, j)) + epsilon);
+		
+		NUM_TYPE learning_rate = 0.0005;
+		const NUM_TYPE epsilon = 1e-10;
+		NUM_TYPE weight_diff(int i, int j, NUM_TYPE loss) {
+			NUM_TYPE g_ = g(i, j) += loss * loss;
+			return learning_rate * loss / (sqrt(g_) + epsilon);
 		}
 #elif defined(OPTIMIZE_NESTEROV)
-		NUM_TYPE& velocity(unsigned int from, unsigned int to) {
+		NUM_TYPE& v(unsigned int from, unsigned int to) const {
 			assert(from <= inputs && to < outputs);
 			return last_v[to * inputs + from];
 		}
 		NUM_TYPE* last_v;
 
-		NUM_TYPE weight_diff(int i, int j, NUM_TYPE loss, NUM_TYPE learning_rate = 0.0001, NUM_TYPE momentum_factor = 0.95) {
-			NUM_TYPE prev_v = velocity(i, j);
-			velocity(i, j) = momentum_factor * velocity(i, j) + learning_rate * loss;
-			return momentum_factor * prev_v + (1 + momentum_factor) * velocity(i, j);
+		NUM_TYPE learning_rate = 0.002;
+		const NUM_TYPE momentum_factor = 0.93;
+
+		NUM_TYPE weight_diff(int i, int j, NUM_TYPE loss) {
+			NUM_TYPE prev_v = v(i, j);
+			NUM_TYPE v_ = v(i, j) = momentum_factor * prev_v - learning_rate * loss;
+			return momentum_factor * prev_v - (1 + momentum_factor) * v_;
 		}
 #elif defined(OPTIMIZE_MOMENTUM)
-		NUM_TYPE& velocity(unsigned int from, unsigned int to) {
+		NUM_TYPE& velocity(unsigned int from, unsigned int to) const {
 			assert(from <= inputs && to < outputs);
 			return last_v[to * inputs + from];
 		}
 		NUM_TYPE* last_v;
 
-		NUM_TYPE weight_diff(int i, int j, NUM_TYPE loss, NUM_TYPE learning_rate = 0.0003, NUM_TYPE momentum_factor = 0.98) {
+		NUM_TYPE learning_rate = 0.001;
+		const NUM_TYPE momentum_factor = 0.98;
+
+		NUM_TYPE weight_diff(int i, int j, NUM_TYPE loss) {
 			return velocity(i, j) = momentum_factor * velocity(i, j) + learning_rate * loss;
 		}
 #else
-		NUM_TYPE weight_diff(int i, int j, NUM_TYPE loss, NUM_TYPE learning_rate = 0.0001) {
+		NUM_TYPE learning_rate = 0.005;
+		NUM_TYPE weight_diff(int i, int j, NUM_TYPE loss) {
 			return learning_rate * loss;
 		}
 #endif
