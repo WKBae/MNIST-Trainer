@@ -34,7 +34,7 @@ namespace nn {
 		virtual int load_weights(NUM_TYPE* begin, int limit = -1) { return 0; }
 	};
 
-	/** Real implementation of the layer, abstracted due to the requirement of the template argument. */
+	/** Real implementation of the layer, abstracted to add capability to use activation functions per layer. */
 	template<typename Activation>
 	class LayerImpl : public Layer {
 	public:
@@ -70,6 +70,10 @@ namespace nn {
 			delete[] weights;
 		}
 
+		/**
+		 * Forward propagate with given input.
+		 * @returns Calculated output of length same as the output of this layer. Should not be deleted or modified.
+		 */
 		NUM_TYPE* forward(NUM_TYPE* prev_f) override {
 			#pragma omp parallel for
 			for (int j = 0; j < outputs; j++) {
@@ -77,18 +81,27 @@ namespace nn {
 				for (int i = 0; i < inputs; i++) {
 					sum += prev_f[i] * weight(i, j);
 				}
+				/* Bias(weight from constant-one) is just added with no multiplication */
 				last_f[j] = activation.calculate(sum + weight(inputs, j));
 			}
 
 			return last_f;
 		}
 
+		/**
+		* Backpropagate with error from the top layer.
+		* This method calculates and keeps the loss. This will be used on weight update, and is overwritten on future `backward()` call.
+		* TODO: To enable batch weight update, the loss have to be sumed up
+		* @returns Error to propagate to lower layer, length of this layer's input. This array should not be deleted.
+		*/
 		NUM_TYPE* backward(NUM_TYPE* prev_delta) override {
+			/* Calculate the loss derivative from the backpropagated delta */
 			#pragma omp parallel for
 			for(int i = 0; i < outputs; i++) {
 				last_delta[i] = activation.derivative(last_f[i]) * prev_delta[i];
 			}
 
+			/* Calculate delta to propagate, to keep from this layer's weight to be used outside of this instance. */
 			#pragma omp parallel for
 			for(int i = 0; i < inputs; i++) {
 				NUM_TYPE sum = 0;
@@ -154,12 +167,14 @@ namespace nn {
 		}
 
 	private:
-		NUM_TYPE& weight(unsigned int from, unsigned int to) {
+		NUM_TYPE& weight(unsigned int from, unsigned int to) const {
 			assert(from <= inputs && to < outputs);
+			/* Column-order to increase cache hit. Forward propagation and weight update are affected by this optimization. */
 			return weights[to * inputs + from];
 		}
 		NUM_TYPE* weights;
 
+		/* Optimizer implementation */
 #if defined(OPTIMIZE_ADAM)
 		NUM_TYPE& m(unsigned int from, unsigned int to) {
 			assert(from <= inputs && to < outputs);
@@ -233,6 +248,7 @@ namespace nn {
 		}
 #endif
 
+		/* End optimizer implementation */
 
 		NUM_TYPE* last_f;
 		NUM_TYPE* last_delta;

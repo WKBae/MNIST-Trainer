@@ -24,13 +24,25 @@ namespace nn {
 	public:
 		class Builder {
 		public:
+			/**
+			 * Sets input size of the network.
+			 * This needs to call first, if not `load()`ing a full network; calling this method clears any layers added before.
+			 * @returns this, for chaining.
+			 */
 			Builder& input(unsigned int input_size) {
-				delete_list();
+				delete_list(true);
 				this->input_size = input_size;
 
 				return *this;
 			}
-			template<typename A = Sigmoid>
+			/**
+			 * Adds a layer with the output neurons given.
+			 * Input size of the layer is set as the previous layer's output or `input()` size.
+			 * The activation function is Sigmoid by default, this can be modified by specifying a function in the template.
+			 * @throws std::invalid_argument when no `input()` is specified before.
+			 * @returns this, for chaining.
+			 */
+			template<typename A = activation::Sigmoid>
 			Builder& addLayer(unsigned int neurons) {
 				unsigned int last_size;
 				if(tail) {
@@ -60,7 +72,13 @@ namespace nn {
 
 				return *this;
 			}
+			/**
+			 * Builds the network.
+			 * @throws std::length_error when `build()` is called with no layers added.
+			 * @returns The network built.
+			 */
 			Network* build() {
+				if (count <= 0) throw std::length_error("No layers present in the network definition!");
 				Layer** layers = new Layer*[count];
 				LayerList* curr = head;
 				for(unsigned int i = 0; i < count && curr != NULL; i++, curr = curr->next) {
@@ -71,7 +89,16 @@ namespace nn {
 				//delete this;
 				return net;
 			}
-
+			/**
+			 * Loads a network from stream.
+			 * This method can be called alone, or with other layers before or after the `load()` call.
+			 * By combining other layers, the network can be pre-trained per each layers.
+			 * @param input The input stream to read from.
+			 * @throws std::invalid_argument if the stream is not a valid network.
+			 * @throws std::runtime_error if the activation function, read from the stream, is unknown.
+			 * @throws std::length_error if the layers cannot be connected due to the output and input size mismatch.
+			 * @returns this, for chaining.
+			 */
 			Builder& load(std::istream& input) {
 				char magic[6];
 				input.read(magic, 5);
@@ -86,8 +113,6 @@ namespace nn {
 				int buf_size = -1;
 
 				for (int i = 0; i < layers; i++) {
-					bool fail = false;
-
 					char type;
 					input.read(&type, sizeof(type));
 					assert(!input.fail());
@@ -114,23 +139,23 @@ namespace nn {
 
 					Layer* layer;
 					switch(type) {
-					case ActivationFunction::types::Sigmoid:
-						layer = new LayerImpl<Sigmoid>(in, out);
+					case activation::types::Sigmoid:
+						layer = new LayerImpl<activation::Sigmoid>(in, out);
 						break;
-					case ActivationFunction::types::Tanh:
-						layer = new LayerImpl<Tanh>(in, out);
+					case activation::types::Tanh:
+						layer = new LayerImpl<activation::Tanh>(in, out);
 						break;
-					case ActivationFunction::types::HardSigmoid:
-						layer = new LayerImpl<HardSigmoid>(in, out);
+					case activation::types::HardSigmoid:
+						layer = new LayerImpl<activation::HardSigmoid>(in, out);
 						break;
-					case ActivationFunction::types::ReLU:
-						layer = new LayerImpl<ReLU>(in, out);
+					case activation::types::ReLU:
+						layer = new LayerImpl<activation::ReLU>(in, out);
 						break;
-					case ActivationFunction::types::LeakyReLU:
-						layer = new LayerImpl<LeakyReLU>(in, out);
+					case activation::types::LeakyReLU:
+						layer = new LayerImpl<activation::LeakyReLU>(in, out);
 						break;
-					case ActivationFunction::types::ELU:
-						layer = new LayerImpl<ELU>(in, out);
+					case activation::types::ELU:
+						layer = new LayerImpl<activation::ELU>(in, out);
 						break;
 					default:
 						throw std::runtime_error("Invalid activation function type!");
@@ -143,7 +168,8 @@ namespace nn {
 					list->next = NULL;
 
 					if (tail) {
-						assert(tail->output_size == in);
+						if (tail->output_size != in)
+							throw std::length_error("Last layer's output size doesn't match the new layer's input size!");
 
 						tail->next = list;
 						tail = list;
@@ -156,6 +182,25 @@ namespace nn {
 
 				delete[] weight_buf;
 
+				return *this;
+			}
+			Builder& popLayer() {
+				LayerList *prev = head;
+				assert(prev != NULL);
+
+				if(prev == tail) {
+					delete_list(true);
+					input_size = 0;
+				} else {
+					while (prev->next != tail)
+						prev = prev->next;
+
+					delete prev->next->layer;
+					delete prev->next;
+					count--;
+
+					tail = prev;
+				}
 				return *this;
 			}
 
@@ -174,11 +219,12 @@ namespace nn {
 			unsigned int input_size;
 			unsigned int count;
 
-			void delete_list() {
+			void delete_list(bool delete_layers = false) {
 				if(!head) return;
 
 				for(LayerList *curr = head; curr != NULL;) {
 					LayerList* next = curr->next;
+					if(delete_layers) delete curr->layer;
 					delete curr;
 					curr = next;
 				}
@@ -188,6 +234,12 @@ namespace nn {
 			}
 		};
 
+		/**
+		 * Trains the network with the given data batch of size `n`.
+		 * TODO: implement batch weight update, instead of one update per single data entry.
+		 * @param n Number of data to read from the `data` array.
+		 * @param data Data array used to train the network.
+		 */
 		void train(unsigned int n, DataEntry* data) {
 			for(unsigned int i = 0; i < n; i++) {
 				assert(data[i].data_count == inputs && data[i].label_count == outputs);
@@ -198,7 +250,7 @@ namespace nn {
 					results[l + 1] = layers[l]->forward(results[l]);
 				}
 
-				/* Restore to original [outputs] size delta. which is changed during backpropagation */
+				/* Restore to pre-allocated [outputs] sized array. The pointer is changed during the backpropagation process */
 				NUM_TYPE* delta = delta_buf;
 
 				/* Calculate delta for the output layer */
@@ -220,6 +272,11 @@ namespace nn {
 			}
 		}
 
+		/**
+		 * Predict using the given input, forward-propagated through the network.
+		 * @param data Input data. Asserts the length is `Network::inputs`.
+		 * @returns Predicted result, the length is same as `Network::outputs`.
+		 */
 		NUM_TYPE* predict(NUM_TYPE* data) {
 			for(int i = 0; i < layer_count; i++) {
 				data = layers[i]->forward(data);
@@ -237,6 +294,11 @@ namespace nn {
 			delete[] layers;
 		}
 
+		/**
+		 * Writes the network to stream.
+		 * The saved network can be loaded by `Builder::load()`.
+		 * @param output Stream to dump this network
+		 */
 		void dump_network(std::ostream& output) {
 			output.write("NeNet", 5);
 			output.write((char*) &layer_count, sizeof(layer_count));
@@ -254,10 +316,11 @@ namespace nn {
 				output.write((char*) &weights[0], sizeof(NUM_TYPE) * size);
 			}
 		}
-	private:
-		Layer** layers;
+
 		const int layer_count;
 		const int inputs, outputs;
+	private:
+		Layer** layers;
 		NUM_TYPE** results;
 		NUM_TYPE* delta_buf;
 
