@@ -12,6 +12,9 @@
 //#define OPTIMIZE_NESTEROV
 //#define OPTIMIZE_MOMENTUM
 // default SGD
+//#define WEIGHT_DECAY (0.000005)
+//#define LEARNING_RATE_DECAY (0.99999998)
+#define LEARNING_RATE_DECAY (0.999998) // for nesterov
 
 #define XAVIER_INITIALIZATION
 //#define ZERO_BIAS_INITIALIZATION
@@ -137,6 +140,10 @@ namespace nn {
 			}
 		}
 		void update_weights(NUM_TYPE* prev_f) override {
+#ifdef LEARNING_RATE_DECAY
+			learning_rate = orig_learning_rate * decay_factor;
+			decay_factor *= LEARNING_RATE_DECAY;
+#endif
 #if defined(OPTIMIZE_ADAM)
 			beta1_sq *= beta1;
 			beta2_sq *= beta2;
@@ -147,9 +154,19 @@ namespace nn {
 				NUM_TYPE delta = last_delta[j];
 				for (int i = 0; i < inputs; i++) {
 					NUM_TYPE loss = delta * prev_f[i];
-					weight(i, j) += weight_diff(i, j, loss);
+					weight(i, j) +=
+						weight_diff(i, j, loss)
+#ifdef WEIGHT_DECAY
+						- WEIGHT_DECAY * weight(i, j)
+#endif
+						;
 				}
-				weight(inputs, j) += weight_diff(inputs, j, delta);
+				weight(inputs, j) +=
+					weight_diff(inputs, j, delta);
+#ifdef WEIGHT_DECAY
+					- WEIGHT_DECAY * weight(inputs, j)
+#endif
+					;
 			}
 		}
 
@@ -276,6 +293,10 @@ namespace nn {
 		}
 #endif
 
+#ifdef LEARNING_RATE_DECAY
+		NUM_TYPE orig_learning_rate = learning_rate;
+		NUM_TYPE decay_factor = 1;
+#endif
 		/* End optimizer implementation */
 
 		NUM_TYPE* last_f;
