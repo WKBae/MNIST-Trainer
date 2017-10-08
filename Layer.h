@@ -13,6 +13,12 @@
 //#define OPTIMIZE_MOMENTUM
 // default SG
 
+#define XAVIER_INITIALIZATION
+//#define ZERO_BIAS_INITIALIZATION
+
+#ifdef XAVIER_INITIALIZATION
+#include <limits>
+#endif
 
 namespace nn {
 
@@ -117,7 +123,17 @@ namespace nn {
 		void initialize_weights() override {
 			for(int i = 0; i <= inputs; i++) {
 				for(int j = 0; j < outputs; j++) {
-					weight(i, j) = ((double) rand() / RAND_MAX) - 0.5;
+					weight(i, j) =
+#ifdef ZERO_BIAS_INITIALIZATION
+					(i == inputs) ? /* bias */ 0 :
+#endif
+#ifdef XAVIER_INITIALIZATION
+						//generateGaussianNoise(0, sqrt(3.0 / (inputs + outputs))) // use uniform version instead of normal(gaussian) dist.
+						rand() * (1.0 / RAND_MAX) * (2 * 4.0 * sqrt(6.0 / (inputs + outputs))) - (4.0 * sqrt(6.0 / (inputs + outputs)))
+#else
+						((double)rand() / RAND_MAX) - 0.5
+#endif
+						;
 				}
 			}
 		}
@@ -254,5 +270,32 @@ namespace nn {
 		NUM_TYPE* last_delta;
 		NUM_TYPE* last_prop_delta;
 		Activation activation;
+
+#ifdef XAVIER_INITIALIZATION
+		/* Gaussian distribution generator, from Wikipedia "Box-Muller transform" implementation */
+		static double generateGaussianNoise(double mu, double sigma) {
+			static const double epsilon = std::numeric_limits<double>::min();
+			static const double two_pi = 2.0*3.14159265358979323846;
+
+			thread_local double z1;
+			thread_local bool generate;
+			generate = !generate;
+
+			if (!generate)
+				return z1 * sigma + mu;
+
+			double u1, u2;
+			do
+			{
+				u1 = rand() * (1.0 / RAND_MAX);
+				u2 = rand() * (1.0 / RAND_MAX);
+			} while (u1 <= epsilon);
+
+			double z0;
+			z0 = sqrt(-2.0 * log(u1)) * cos(two_pi * u2);
+			z1 = sqrt(-2.0 * log(u1)) * sin(two_pi * u2);
+			return z0 * sigma + mu;
+		}
+#endif
 	};
 }
