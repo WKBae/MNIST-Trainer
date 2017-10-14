@@ -1,23 +1,10 @@
 #pragma once
 
-#include "Common.h"
+#include "Config.h"
 #include <cstdlib>
 #include <cstring>
 #include <cassert>
 #include <vector>
-
-#define OPTIMIZE_ADAM
-//#define OPTIMIZE_RMSPROP
-//#define OPTIMIZE_ADAGRAD
-//#define OPTIMIZE_NESTEROV
-//#define OPTIMIZE_MOMENTUM
-// default SGD
-//#define WEIGHT_DECAY (0.000005)
-//#define LEARNING_RATE_DECAY (0.99999998)
-#define LEARNING_RATE_DECAY (0.999998) // for nesterov
-
-#define XAVIER_INITIALIZATION
-//#define ZERO_BIAS_INITIALIZATION
 
 #ifdef XAVIER_INITIALIZATION
 #include <limits>
@@ -47,24 +34,30 @@ namespace nn {
 	template<typename Activation>
 	class LayerImpl : public Layer {
 	public:
-		LayerImpl(unsigned int inputs, unsigned int outputs) : Layer(inputs, outputs) {
-			weights = new NUM_TYPE[(inputs + 1) * outputs];
+		LayerImpl(unsigned int inputs, unsigned int outputs)
+		: Layer(inputs, outputs),
+			weights(new NUM_TYPE[(inputs + 1) * outputs]),
 
 #if defined(OPTIMIZE_ADAM)
-			last_m = new NUM_TYPE[(inputs + 1) * outputs]();
-			last_v = new NUM_TYPE[(inputs + 1) * outputs]();
-			lr_t = 0;
-			beta1_sq = beta2_sq = 1;
+			last_m(new NUM_TYPE[(inputs + 1) * outputs]()),
+			last_v(new NUM_TYPE[(inputs + 1) * outputs]()),
+			lr_t(0),
+			beta1_sq(1), beta2_sq(1),
 #elif defined(OPTIMIZE_ADAGRAD) || defined(OPTIMIZE_RMSPROP)
-			last_g = new NUM_TYPE[(inputs + 1) * outputs]();
+			last_g(new NUM_TYPE[(inputs + 1) * outputs]()),
 #elif defined(OPTIMIZE_MOMENTUM) || defined(OPTIMIZE_NESTEROV)
-			last_v = new NUM_TYPE[(inputs + 1) * outputs]();
+			last_v(new NUM_TYPE[(inputs + 1) * outputs]()),
 #endif
 
-			last_f = new NUM_TYPE[outputs];
-			last_delta = new NUM_TYPE[outputs];
-			last_prop_delta = new NUM_TYPE[inputs];
+			last_f(new NUM_TYPE[outputs]),
+			last_delta(new NUM_TYPE[outputs]),
+			last_prop_delta(new NUM_TYPE[inputs]),
+#endif
+			activation()
+		{
+
 		}
+
 		~LayerImpl() {
 			delete[] last_prop_delta;
 			delete[] last_delta;
@@ -141,12 +134,12 @@ namespace nn {
 		}
 		void update_weights(NUM_TYPE* prev_f) override {
 #ifdef LEARNING_RATE_DECAY
-			learning_rate = orig_learning_rate * decay_factor;
+			learning_rate = INITIAL_LEARNING_RATE * decay_factor;
 			decay_factor *= LEARNING_RATE_DECAY;
 #endif
 #if defined(OPTIMIZE_ADAM)
-			beta1_sq *= beta1;
-			beta2_sq *= beta2;
+			beta1_sq *= ADAM_BETA1;
+			beta2_sq *= ADAM_BETA2;
 			lr_t = learning_rate * sqrt(1.0 - beta2_sq) / (1.0 - beta1_sq);
 #endif
 			#pragma omp parallel for
@@ -220,16 +213,16 @@ namespace nn {
 		NUM_TYPE* last_v;
 
 		NUM_TYPE lr_t;
-		NUM_TYPE learning_rate = 0.0002;
+		NUM_TYPE learning_rate = INITIAL_LEARNING_RATE;
 		NUM_TYPE beta1_sq, beta2_sq;
-		const NUM_TYPE beta1 = 0.99, beta2 = 0.999995;
-		const NUM_TYPE epsilon = 1e-8;
+		//const NUM_TYPE beta1 = ADAM_BETA1, beta2 = ADAM_BETA2;
+		//const NUM_TYPE epsilon = ADAM_EPSILON;
 
 		NUM_TYPE weight_diff(int i, int j, NUM_TYPE loss) {
 			// small performance boost by storing the values temporary
-			NUM_TYPE m_ = m(i, j) = beta1 * m(i, j) + (1.0 - beta1) * loss;
-			NUM_TYPE v_ = v(i, j) = beta2 * v(i, j) + (1.0 - beta2) * (loss * loss);
-			return lr_t * m_ / (sqrt(v_) + epsilon);
+			NUM_TYPE m_ = m(i, j) = ADAM_BETA1 * m(i, j) + (1.0 - ADAM_BETA1) * loss;
+			NUM_TYPE v_ = v(i, j) = ADAM_BETA2 * v(i, j) + (1.0 - ADAM_BETA2) * (loss * loss);
+			return lr_t * m_ / (sqrt(v_) + ADAM_EPSILON);
 		}
 #elif defined(OPTIMIZE_RMSPROP)
 		NUM_TYPE& g(unsigned int from, unsigned int to) const {
@@ -238,12 +231,11 @@ namespace nn {
 		}
 		NUM_TYPE* last_g;
 
-		NUM_TYPE learning_rate = 0.0003;
-		const NUM_TYPE rho = 0.99985, epsilon = 1e-8;
+		NUM_TYPE learning_rate = INITIAL_LEARNING_RATE;
 
-		NUM_TYPE weight_diff(int i, int j, NUM_TYPE loss, ) {
-			NUM_TYPE g_ = g(i, j) = rho * g(i, j) + (1.0 - rho) * (loss * loss);
-			return learning_rate * loss / (sqrt(g_) + epsilon);
+		NUM_TYPE weight_diff(int i, int j, NUM_TYPE loss) {
+			NUM_TYPE g_ = g(i, j) = RMSPROP_RHO * g(i, j) + (1.0 - RMSPROP_RHO) * (loss * loss);
+			return learning_rate * loss / (sqrt(g_) + RMSPROP_EPSILON);
 		}
 #elif defined(OPTIMIZE_ADAGRAD)
 		NUM_TYPE& g(unsigned int from, unsigned int to) const {
@@ -252,11 +244,11 @@ namespace nn {
 		}
 		NUM_TYPE* last_g;
 		
-		NUM_TYPE learning_rate = 0.0005;
-		const NUM_TYPE epsilon = 1e-10;
+		NUM_TYPE learning_rate = INITIAL_LEARNING_RATE;
+
 		NUM_TYPE weight_diff(int i, int j, NUM_TYPE loss) {
 			NUM_TYPE g_ = g(i, j) += loss * loss;
-			return learning_rate * loss / (sqrt(g_) + epsilon);
+			return learning_rate * loss / (sqrt(g_) + ADAGRAD_EPSILON);
 		}
 #elif defined(OPTIMIZE_NESTEROV)
 		NUM_TYPE& v(unsigned int from, unsigned int to) const {
@@ -265,13 +257,12 @@ namespace nn {
 		}
 		NUM_TYPE* last_v;
 
-		NUM_TYPE learning_rate = 0.002;
-		const NUM_TYPE momentum_factor = 0.93;
+		NUM_TYPE learning_rate = INITIAL_LEARNING_RATE;
 
 		NUM_TYPE weight_diff(int i, int j, NUM_TYPE loss) {
 			NUM_TYPE prev_v = v(i, j);
-			NUM_TYPE v_ = v(i, j) = momentum_factor * prev_v - learning_rate * loss;
-			return momentum_factor * prev_v - (1 + momentum_factor) * v_;
+			NUM_TYPE v_ = v(i, j) = NESTROV_MOMENTUM_FACTOR * prev_v - learning_rate * loss;
+			return NESTROV_MOMENTUM_FACTOR * prev_v - (1 + NESTROV_MOMENTUM_FACTOR) * v_;
 		}
 #elif defined(OPTIMIZE_MOMENTUM)
 		NUM_TYPE& velocity(unsigned int from, unsigned int to) const {
@@ -280,21 +271,19 @@ namespace nn {
 		}
 		NUM_TYPE* last_v;
 
-		NUM_TYPE learning_rate = 0.001;
-		const NUM_TYPE momentum_factor = 0.98;
+		NUM_TYPE learning_rate = INITIAL_LEARNING_RATE;
 
 		NUM_TYPE weight_diff(int i, int j, NUM_TYPE loss) {
-			return velocity(i, j) = momentum_factor * velocity(i, j) + learning_rate * loss;
+			return velocity(i, j) = MOMENTUM_MOMENTUM_FACTOR * velocity(i, j) + learning_rate * loss;
 		}
 #else
-		NUM_TYPE learning_rate = 0.005;
+		NUM_TYPE learning_rate = INITIAL_LEARNING_RATE;
 		NUM_TYPE weight_diff(int i, int j, NUM_TYPE loss) {
 			return learning_rate * loss;
 		}
 #endif
 
 #ifdef LEARNING_RATE_DECAY
-		NUM_TYPE orig_learning_rate = learning_rate;
 		NUM_TYPE decay_factor = 1;
 #endif
 		/* End optimizer implementation */

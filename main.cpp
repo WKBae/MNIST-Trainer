@@ -9,9 +9,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <algorithm>
-
-#define EPOCH_SAMPLES 100
-//#define PRINT_TRAIN_ERROR
+#include <string>
 
 bool hasOption(char** begin, char** end, const std::string& option) {
 	return std::find(begin, end, option) != end;
@@ -28,13 +26,16 @@ char* getOptionValue(char** begin, char** end, const std::string& option) {
 
 int main(int argc, char* argv[]) {
 	if (hasOption(argv, argv + argc, "-h")) {
-		std::cout	<< "============================ Neural Network Trainer - Usage ============================" << std::endl
-					<< " Train Mode: MNIST_NN [(-c {Checkpoint file} -e {Epoch count} | [-h1 {Neurons in 1st hidden layer}] [-h2 {Neurons in 2nd hidden layer}])] [-t {Threshold value}]" << std::endl
+		std::cout	<< "========================================= Neural Network Trainer - Usage =========================================" << std::endl
+					<< " Train Mode: MNIST_NN [-h1 {Neurons in 1st hidden layer}] [-h2 {Neurons in 2nd hidden layer}] [-t {MSE threshold}]" << std::endl
+					<< "  or to start from a checkpoint: MNIST_NN -c {Checkpoint file} -e {Epoch count} [-t {MSE threshold}]" << std::endl
 					<< "  > The program reads two files, train.bin and test.bin, and starts training until MSE reaches the threshold" << std::endl
-					<< "  > threshold defaults to 0.001, h1 defaults to 128, h2 defaults to 64" << std::endl
+					<< "  > threshold defaults to " STR(DEFAULT_MSE_THRESHOLD) ", "
+							"h1 defaults to " STR(DEFAULT_HIDDEN_LAYER_1) ", "
+							"h2 defaults to " STR(DEFAULT_HIDDEN_LAYER_2) << std::endl
 					<< " Run Mode: MNIST_NN -r -c {Checkpoint file}" << std::endl
 					<< "  > Input 784 integers in range 0~255 through standard input to get the predicted number. Program ends on EOF." << std::endl
-					<< "========================================================================================" << std::endl;
+					<< "==================================================================================================================" << std::endl;
 		return 0;
 	}
 
@@ -100,7 +101,7 @@ int main(int argc, char* argv[]) {
 			is.close();
 		} else {
 			char* h_s = getOptionValue(argv, argv + argc, "-h1");
-			int h1 = 128;
+			int h1 = DEFAULT_HIDDEN_LAYER_1;
 			if(h_s) {
 				h1 = strtoul(h_s, NULL, 10);
 				if(h1 == 0) {
@@ -110,7 +111,7 @@ int main(int argc, char* argv[]) {
 			}
 
 			h_s = getOptionValue(argv, argv + argc, "-h2");
-			int h2 = 64;
+			int h2 = DEFAULT_HIDDEN_LAYER_2;
 			if (h_s) {
 				h2 = strtoul(h_s, NULL, 10);
 				if (h2 == 0) {
@@ -122,9 +123,9 @@ int main(int argc, char* argv[]) {
 			epoch = 0;
 			network = nn::Network::Builder()
 				.input(784)
-				.addLayer<nn::activation::Sigmoid>(h1)
-				.addLayer<nn::activation::Sigmoid>(h2)
-				.addLayer<nn::activation::Sigmoid>(10)
+				.addLayer<DEFAULT_ACTIVATION_LAYER_1>(h1)
+				.addLayer<DEFAULT_ACTIVATION_LAYER_2>(h2)
+				.addLayer<DEFAULT_ACTIVATION_LAYER_3>(10)
 				.build();
 		}
 
@@ -142,7 +143,7 @@ int main(int argc, char* argv[]) {
 				return -7;
 			}
 		} else {
-			threshold = 0.001;
+			threshold = DEFAULT_MSE_THRESHOLD;
 		}
 
 		std::cout << "Loading data set..." << std::endl;
@@ -198,22 +199,32 @@ int main(int argc, char* argv[]) {
 		mse = sq_error / error_count;
 		std::cout << "Before start, Test set MSE: " << mse << ", Accuracy: " << correct_count * 100.0 / test_set.size() << '%' << std::endl;
 
-#ifndef EPOCH_SAMPLES
+		bool mse_updated = false;
+
+#ifndef MINIBATCH_COUNT
 		const int batch_size = train_set.size();
 		for (int start = ++epoch; ; epoch++) {
+			for (int i = 0; i < TRAINS_PER_EPOCH; i++) {
+				std::random_shuffle(train_set.begin(), train_set.end());
+				network->train(batch_size, &train_set[0]);
+			}
 #else
-		const int batch_size = EPOCH_SAMPLES;
+		const int batch_size = MINIBATCH_COUNT;
+		int batch_begin = 0;
 		for (int start = ++epoch; ; epoch++) {
+			for (int i = 0; i < TRAINS_PER_EPOCH; i++) {
+				// Shuffle only when the dataset reached end. This may prevent duplicates in training.
+				if (batch_begin + batch_size > train_set.size()) {
+					std::random_shuffle(train_set.begin(), train_set.end());
+					batch_begin = 0;
+				}
+
+				network->train(batch_size, &train_set[batch_begin]);
+				batch_begin += batch_size;
+			}
 #endif
 
-			std::random_shuffle(train_set.begin(), train_set.end());
-
-			// start position doesn't matter; train_set is randomly shuffled every epoch.
-			network->train(batch_size, &train_set[0]);
-
-#ifdef EPOCH_SAMPLES
-			if (epoch % 100 == 0) {
-#endif
+			if (epoch % TEST_EPOCHES == 0) {
 				std::cout << "Epoch #" << epoch << " finished,";
 
 #ifdef PRINT_TRAIN_ERROR
@@ -271,17 +282,13 @@ int main(int argc, char* argv[]) {
 				}
 				mse = sq_error / error_count;
 				std::cout  << "\tTest: MSE: " << mse << ",\tAcc: " << correct_count * 100.0 / test_set.size() << '%' << std::endl;
-#ifdef EPOCH_SAMPLES
-			}
-#endif
 
-#ifndef EPOCH_SAMPLES
-			if (epoch % 10 == 0) {
-#else
-			if (epoch % 2000 == 0) {
-#endif
-				char ckptfile[100];
-				sprintf(ckptfile, "./ckpt/%d.ckpt", epoch);
+				mse_updated = true;
+			}
+
+			if (epoch % CHECKPOINT_EPOCHES == 0) {
+				char ckptfile[300];
+				snprintf(ckptfile, 100, "./ckpt/%d.ckpt", epoch);
 
 				std::cout << std::endl << "[Checkpoint reached] Saving to \"" << ckptfile << "\"..." << std::endl;
 
@@ -293,14 +300,15 @@ int main(int argc, char* argv[]) {
 				std::cout << "Save complete." << std::endl << std::endl;
 			}
 
-			if (mse < threshold) {
+			if (mse_updated && mse <= threshold) {
 				std::cout << "MSE reached the threshold, run more epoches?(Y/n) ";
-				char ans;
-				std::cin >> ans;
-				if (ans == 'N' || ans == 'n')
+				std::string line;
+				std::getline(std::cin, line);
+				if (line == "N" || line == "n")
 					break;
 
 				std::cout << std::endl;
+				mse_updated = false;
 			}
 		}
 

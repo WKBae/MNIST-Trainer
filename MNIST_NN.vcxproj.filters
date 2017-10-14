@@ -24,9 +24,6 @@
     <ClInclude Include="Network.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
-    <ClInclude Include="Common.h">
-      <Filter>헤더 파일</Filter>
-    </ClInclude>
     <ClInclude Include="Dataset.h">
       <Filter>헤더 파일\dataset</Filter>
     </ClInclude>
@@ -44,6 +41,9 @@
     </ClInclude>
     <ClInclude Include="Activation.h">
       <Filter>헤더 파일\layer</Filter>
+    </ClInclude>
+    <ClInclude Include="Config.h">
+      <Filter>헤더 파일</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

@@ -5,7 +5,7 @@
  * Note that the result arrays returned(NUM_TYPE* type return values) must not be modified.
  **/
 
-#include "Common.h"
+#include "Config.h"
 #include "Activation.h"
 #include "Layer.h"
 #include "Dataset.h"

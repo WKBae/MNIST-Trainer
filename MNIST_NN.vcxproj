@@ -98,7 +98,7 @@
     <ClInclude Include="Layer.h" />
     <ClInclude Include="MNIST.h" />
     <ClInclude Include="Network.h" />
-    <ClInclude Include="Common.h" />
+    <ClInclude Include="Config.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
