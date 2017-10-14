@@ -296,8 +296,8 @@ namespace nn {
 
 		NUM_TYPE weight_diff(int i, int j, NUM_TYPE loss) {
 			NUM_TYPE prev_v = v(i, j);
-			NUM_TYPE v_ = v(i, j) = NESTROV_MOMENTUM_FACTOR * prev_v - learning_rate * loss;
-			return NESTROV_MOMENTUM_FACTOR * prev_v - (1 + NESTROV_MOMENTUM_FACTOR) * v_;
+			NUM_TYPE v_ = v(i, j) = NESTEROV_MOMENTUM_FACTOR * prev_v - learning_rate * loss;
+			return NESTEROV_MOMENTUM_FACTOR * prev_v - (1 + NESTEROV_MOMENTUM_FACTOR) * v_;
 		}
 #elif defined(OPTIMIZE_MOMENTUM)
 		NUM_TYPE& velocity(unsigned int from, unsigned int to) const {
