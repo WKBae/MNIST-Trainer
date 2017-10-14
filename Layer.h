@@ -20,10 +20,14 @@ namespace nn {
 
 		const int inputs, outputs;
 
-		virtual NUM_TYPE* forward(NUM_TYPE* prev_f) = 0;
+		virtual NUM_TYPE* forward(NUM_TYPE* prev_f, bool train = false) = 0;
 		virtual NUM_TYPE* backward(NUM_TYPE* prev_delta) = 0;
 		virtual void initialize_weights() = 0;
 		virtual void update_weights(NUM_TYPE* prev_f) = 0;
+
+#ifdef BATCH_TRAIN
+		virtual void clear_delta() = 0;
+#endif
 
 		virtual char getActivationType() = 0;
 		virtual std::vector<NUM_TYPE> dump_weights() { return std::vector<NUM_TYPE>(); }
@@ -52,6 +56,9 @@ namespace nn {
 			last_f(new NUM_TYPE[outputs]),
 			last_delta(new NUM_TYPE[outputs]),
 			last_prop_delta(new NUM_TYPE[inputs]),
+#ifdef BATCH_TRAIN
+			delta_sum(new NUM_TYPE[outputs]),
+			batch_count(0),
 #endif
 			activation()
 		{
@@ -59,6 +66,9 @@ namespace nn {
 		}
 
 		~LayerImpl() {
+#ifdef BATCH_TRAIN
+			delete[] delta_sum;
+#endif
 			delete[] last_prop_delta;
 			delete[] last_delta;
 			delete[] last_f;
@@ -75,9 +85,15 @@ namespace nn {
 		 * Forward propagate with given input.
 		 * @returns Calculated output of length same as the output of this layer. Should not be deleted or modified.
 		 */
-		NUM_TYPE* forward(NUM_TYPE* prev_f) override {
+		NUM_TYPE* forward(NUM_TYPE* prev_f, bool train = false) override {
 			#pragma omp parallel for
 			for (int j = 0; j < outputs; j++) {
+#ifdef DROPOUT_RATE
+				if (train && rand() * (1.0 / RAND_MAX) <= DROPOUT_RATE) {
+					last_f[j] = 0;
+					continue;
+				}
+#endif
 				NUM_TYPE sum = 0;
 				for (int i = 0; i < inputs; i++) {
 					sum += prev_f[i] * weight(i, j);
@@ -88,6 +104,15 @@ namespace nn {
 
 			return last_f;
 		}
+
+#ifdef BATCH_TRAIN
+		void clear_delta() override {
+			for(int i = 0; i < outputs; i++) {
+				delta_sum[i] = 0;
+			}
+			batch_count = 0;
+		}
+#endif
 
 		/**
 		* Backpropagate with error from the top layer.
@@ -100,7 +125,13 @@ namespace nn {
 			#pragma omp parallel for
 			for(int i = 0; i < outputs; i++) {
 				last_delta[i] = activation.derivative(last_f[i]) * prev_delta[i];
+#ifdef BATCH_TRAIN
+				delta_sum[i] += last_delta[i];
+#endif
 			}
+#ifdef BATCH_TRAIN
+			batch_count++;
+#endif
 
 			/* Calculate delta to propagate, to keep from this layer's weight to be used outside of this instance. */
 			#pragma omp parallel for
@@ -144,7 +175,11 @@ namespace nn {
 #endif
 			#pragma omp parallel for
 			for (int j = 0; j < outputs; j++) {
+#ifdef BATCH_TRAIN
+				NUM_TYPE delta = delta_sum[j] / batch_count;
+#else
 				NUM_TYPE delta = last_delta[j];
+#endif
 				for (int i = 0; i < inputs; i++) {
 					NUM_TYPE loss = delta * prev_f[i];
 					weight(i, j) +=
@@ -291,6 +326,11 @@ namespace nn {
 		NUM_TYPE* last_f;
 		NUM_TYPE* last_delta;
 		NUM_TYPE* last_prop_delta;
+#ifdef BATCH_TRAIN
+		NUM_TYPE* delta_sum;
+		int batch_count;
+#endif
+
 		Activation activation;
 
 #ifdef XAVIER_INITIALIZATION

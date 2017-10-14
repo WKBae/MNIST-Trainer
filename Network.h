@@ -241,6 +241,12 @@ namespace nn {
 		 * @param data Data array used to train the network.
 		 */
 		void train(unsigned int n, DataEntry* data) {
+#ifdef BATCH_TRAIN
+			for(int i = 0; i < layer_count; i++) {
+				layers[i]->clear_delta();
+			}
+#endif
+
 			for (unsigned int i = 0; i < n; i++) {
 				assert(data[i].data_count == inputs && data[i].label_count == outputs);
 
@@ -262,13 +268,19 @@ namespace nn {
 				for (int l = layer_count - 1; l >= 0; l--) {
 					delta = layers[l]->backward(delta);
 				}
-				
+
+#ifdef BATCH_TRAIN
+			// Update after whole batch is applied
+			}
+#endif
 				/* Update weights with their optimizer */
 				#pragma omp parallel for
 				for(int l = 0; l < layer_count; l++) {
 					layers[l]->update_weights(results[l]);
 				}
+#ifndef BATCH_TRAIN
 			}
+#endif
 		}
 
 		/**
