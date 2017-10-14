@@ -241,31 +241,30 @@ namespace nn {
 		 * @param data Data array used to train the network.
 		 */
 		void train(unsigned int n, DataEntry* data) {
-			for(unsigned int i = 0; i < n; i++) {
+			for (unsigned int i = 0; i < n; i++) {
 				assert(data[i].data_count == inputs && data[i].label_count == outputs);
 
 				/* Retrieve the result(f = output) of the layers */
 				results[0] = data[i].data;
-				for(int l = 0; l < layer_count; l++) {
-					results[l + 1] = layers[l]->forward(results[l]);
+				for (int l = 0; l < layer_count; l++) {
+					results[l + 1] = layers[l]->forward(results[l], true);
 				}
 
 				/* Restore to pre-allocated [outputs] sized array. The pointer is changed during the backpropagation process */
 				NUM_TYPE* delta = delta_buf;
 
 				/* Calculate delta for the output layer */
-				#pragma loop(hint_parallel(0))
-				for(int j = 0; j < outputs; j++) {
+				for (int j = 0; j < outputs; j++) {
 					delta[j] = data[i].label[j] - results[layer_count][j];
 				}
 
 				/* Backpropagate and get a new delta for the next('backward') layer. */
-				for(int l = layer_count - 1; l >= 0; l--) {
+				for (int l = layer_count - 1; l >= 0; l--) {
 					delta = layers[l]->backward(delta);
 				}
 				
 				/* Update weights with their optimizer */
-				#pragma loop(hint_parallel(0))
+				#pragma omp parallel for
 				for(int l = 0; l < layer_count; l++) {
 					layers[l]->update_weights(results[l]);
 				}

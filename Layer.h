@@ -155,7 +155,7 @@ namespace nn {
 						;
 				}
 				weight(inputs, j) +=
-					weight_diff(inputs, j, delta);
+					weight_diff(inputs, j, delta)
 #ifdef WEIGHT_DECAY
 					- WEIGHT_DECAY * weight(inputs, j)
 #endif
